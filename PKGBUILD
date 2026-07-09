@@ -1,29 +1,41 @@
-# Maintainer: Philip Müller <philm[at]manjaro[dot]org>
-# Maintainer: Bernhard Landauer <bernhard[at]manjaro[dot]org>
-# Contributor: Pierre Schmitz <pierre@archlinux.de>
+# Maintainer: XLibre Team <your@email>
+# Contributor: Gyöngyösi Gábor <gabor at gshoots dot hu>
+# Contributor: Philip Müller <philm[at]manjaro[dot]org>
+# Contributor: Bernhard Landauer <bernhard[at]manjaro[dot]org>
+# This PKGBUILD is derived from manjaro-keyring to provide GPG keys for the
+# XLibre xserver repositories (both Arch and Manjaro variants).
+#
+# The keyring is generated at build time by the Makefile update target,
+# which downloads keys from primary URLs with fallback to keyservers.
+# Trusted and revoked key lists are maintained statically.
 
-pkgname=manjaro-keyring
-pkgver=20251003
+pkgname=xlibre-keyring
+pkgver=20260709
 pkgrel=1
-pkgdesc="Manjaro PGP keyring"
+pkgdesc="XLibre PGP keyring"
 arch=('any')
-url="https://gitlab.manjaro.org/packages/core/manjaro-keyring"
+url="https://github.com/xlibre/xlibre-keyring"
 license=('GPL-3.0-or-later')
 depends=('pacman')
 install="${pkgname}.install"
-source=('Makefile'
-        'manjaro.gpg'
-        'manjaro-revoked'
-        'manjaro-trusted')
-sha256sums=('b00e0304982253e15dc9ee076bd1c795585f1a1028112658a5d2c9f773c4d187'
-            '5a10d8dc7b605d23b8c888aff8759b6e1134ffc8ef0730ea99c9ce1286a44a62'
-            'af2081cc55ba21ec22226660fc8079f190ea7442008fe45d5de682860721972b'
-            '279d15cdc4d66d8b6efe12c7a4945b8dfd235e635f97f102cd4a70afdb265eb3')
 
-pkgver() {
-  date +%Y%m%d
+# Source files: Makefile, trusted list, revoked list.
+# The actual keyring (xlibre.gpg) is created during prepare().
+source=('Makefile'
+        'xlibre-trusted'
+        'xlibre-revoked')
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP')
+
+prepare() {
+  # Generate the xlibre.gpg keyring from the Makefile update target.
+  # This downloads the public keys using the defined fallback methods.
+  cd "$srcdir"
+  make update
 }
 
 package() {
+  # Install the keyring files into /usr/share/pacman/keyrings/
   make DESTDIR="${pkgdir}" install
 }

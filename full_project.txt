@@ -1,0 +1,283 @@
+
+=========================================
+FILE: .gitlab-ci.yml
+=========================================
+
+### Generic CI Template for chrootbuild
+#
+#
+#  Usage: chrootbuild [options]
+#
+#     -b <branch> Branch to use:
+#                 (unstable/testing/stable-staging/stable;
+#                 arm-unstable/arm-testing/arm-stable)
+#                 default: unstable / arm-unstable
+#     -c          Start with clean chroot fs
+#     -h          This help
+#     -i <pkg>    Install package(s) to chroot fs
+#                 (for multiple packages repeat -i flag)
+#     -l <list>   List(s) to build
+#                 (for multiple lists repeat -l flag)
+#     -n          Install built pkg to chroot fs
+#     -p <pkg>    Package(s) to build
+#                 (for multiple packages repeat -p flag)
+#     -r          Remove previously built packages in $PKGDEST
+#     -s          Sign package(s)
+
+package:
+  tags:
+    - aarch64
+  script:
+    # build pkg via chrootbuild
+    - export PKG=${PWD##*/}
+    - cd ..
+    - sudo chrootbuild -cp $PKG
+    - mv -v ./*.pkg.tar.* $PKG
+  artifacts:
+    paths:
+    - ./*.pkg.tar.*
+    expire_in: 1 week
+
+=========================================
+FILE: Makefile
+=========================================
+
+# Makefile for xlibre-keyring
+# This file handles keyring generation (update) and installation.
+#
+# Update target downloads the Arch and Manjaro public keys using a
+# fallback chain: primary URL → keyserver.ubuntu.com → keys.openpgp.org.
+# The resulting keyring is exported as xlibre.gpg.
+#
+# Installation follows the standard pacman keyring layout.
+
+V        = 20260709
+PREFIX   = /usr
+KEYDIR   = $(DESTDIR)$(PREFIX)/share/pacman/keyrings/
+
+# Key fingerprints for XLibre repositories
+ARCH_KEY_ID     = B97F7C613F359424
+MANJARO_KEY_ID  = D1445F51BC0A8969
+
+# URLs to the official key files (primary fetch source)
+ARCH_URL        = https://xlibre-arch.github.io/xlibre-archlinux.asc
+MANJARO_URL     = https://xlibre-manjaro.github.io/xlibre-manjarolinux.asc
+
+# Temporary GPG home for import operations
+TEMPHOME = $(shell mktemp -d)
+
+.PHONY: update install uninstall
+
+update:
+	@echo "==> Obtaining Arch Linux XLibre key ($(ARCH_KEY_ID))"
+	@# Try primary URL first, then ubuntu keyserver, then openpgp.org
+	@curl -fsS $(ARCH_URL) -o $(TEMPHOME)/arch.asc 2>/dev/null && \
+	  gpg --homedir $(TEMPHOME) --import $(TEMPHOME)/arch.asc 2>/dev/null || \
+	 (echo "   Primary URL failed, trying keyserver.ubuntu.com..."; \
+	  gpg --homedir $(TEMPHOME) --keyserver hkp://keyserver.ubuntu.com --recv-keys $(ARCH_KEY_ID) 2>/dev/null) || \
+	 (echo "   Ubuntu keyserver failed, trying keys.openpgp.org..."; \
+	  gpg --homedir $(TEMPHOME) --keyserver hkps://keys.openpgp.org --recv-keys $(ARCH_KEY_ID) 2>/dev/null) || \
+	 { echo "ERROR: Could not obtain Arch key!"; exit 1; }
+
+	@echo "==> Obtaining Manjaro XLibre key ($(MANJARO_KEY_ID))"
+	@# Same fallback chain for Manjaro key
+	@curl -fsS $(MANJARO_URL) -o $(TEMPHOME)/manjaro.asc 2>/dev/null && \
+	  gpg --homedir $(TEMPHOME) --import $(TEMPHOME)/manjaro.asc 2>/dev/null || \
+	 (echo "   Primary URL failed, trying keyserver.ubuntu.com..."; \
+	  gpg --homedir $(TEMPHOME) --keyserver hkp://keyserver.ubuntu.com --recv-keys $(MANJARO_KEY_ID) 2>/dev/null) || \
+	 (echo "   Ubuntu keyserver failed, trying keys.openpgp.org..."; \
+	  gpg --homedir $(TEMPHOME) --keyserver hkps://keys.openpgp.org --recv-keys $(MANJARO_KEY_ID) 2>/dev/null) || \
+	 { echo "ERROR: Could not obtain Manjaro key!"; exit 1; }
+
+	@echo "==> Exporting combined keyring to xlibre.gpg"
+	@gpg --homedir $(TEMPHOME) --export --armor $(ARCH_KEY_ID) $(MANJARO_KEY_ID) > xlibre.gpg
+	@rm -rf $(TEMPHOME)
+	@echo "==> Keyring update complete"
+
+install:
+	install -dm755 $(KEYDIR)
+	install -m0644 xlibre{.gpg,-trusted,-revoked} $(KEYDIR)
+
+uninstall:
+	rm -f $(KEYDIR)xlibre{.gpg,-trusted,-revoked}
+	rmdir -p --ignore-fail-on-non-empty $(KEYDIR)
+=========================================
+FILE: PKGBUILD
+=========================================
+
+# Maintainer: XLibre Team <your@email>
+# Contributor: Gyöngyösi Gábor <gabor at gshoots dot hu>
+# Contributor: Philip Müller <philm[at]manjaro[dot]org>
+# Contributor: Bernhard Landauer <bernhard[at]manjaro[dot]org>
+# This PKGBUILD is derived from manjaro-keyring to provide GPG keys for the
+# XLibre xserver repositories (both Arch and Manjaro variants).
+#
+# The keyring is generated at build time by the Makefile update target,
+# which downloads keys from primary URLs with fallback to keyservers.
+# Trusted and revoked key lists are maintained statically.
+
+pkgname=xlibre-keyring
+pkgver=20260709
+pkgrel=1
+pkgdesc="XLibre PGP keyring"
+arch=('any')
+url="https://github.com/xlibre/xlibre-keyring"
+license=('GPL-3.0-or-later')
+depends=('pacman')
+install="${pkgname}.install"
+
+# Source files: Makefile, trusted list, revoked list.
+# The actual keyring (xlibre.gpg) is created during prepare().
+source=('Makefile'
+        'xlibre-trusted'
+        'xlibre-revoked')
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP')
+
+prepare() {
+  # Generate the xlibre.gpg keyring from the Makefile update target.
+  # This downloads the public keys using the defined fallback methods.
+  cd "$srcdir"
+  make update
+}
+
+package() {
+  # Install the keyring files into /usr/share/pacman/keyrings/
+  make DESTDIR="${pkgdir}" install
+}
+=========================================
+FILE: xlibre-keyring.install
+=========================================
+
+# xlibre-keyring.install
+# This script handles keyring updates, key deletion, and repository advice.
+# It is heavily commented to explain every step for future maintainers.
+
+# Helper function to print bold green messages
+msg() {
+    local ALL_OFF="\e[1;0m"
+    local BOLD="\e[1;1m"
+    local GREEN="${BOLD}\e[1;32m"
+
+    local MESSAGE=$1
+    shift 1
+    printf "${GREEN}==>${ALL_OFF}${BOLD} ${MESSAGE}${ALL_OFF}\n" "$@" >&2
+}
+
+# pre_upgrade: called before upgrading from an older version.
+# Here we clean up old or wrongly disabled keys from previous package versions.
+# The original manjaro-keyring cleanup logic is left commented for reference.
+# For xlibre, we remove the old/replaced signing key (73580DE2EDDFA6D6) if present.
+pre_upgrade() {
+    # ----------------------------------------------------------------------
+    # Example cleanup from Manjaro keyring (commented out):
+    # if [[ "$(vercmp $2 20220509-2)" -lt 0 ]]; then
+    #     msg "Delete wrongly disabled keys"
+    #     pacman-key -d 688E8F82879D0E25CE541426150C200743ED46D8
+    #     ...
+    # fi
+    # ----------------------------------------------------------------------
+
+    # Remove the old/revoked XLibre key if it was manually added before this package
+    if pacman-key -f 73580DE2EDDFA6D6 >/dev/null 2>&1; then
+        msg "Removing old/revoked XLibre key (73580DE2EDDFA6D6)"
+        pacman-key -d 73580DE2EDDFA6D6 2>/dev/null || true
+    fi
+}
+
+# post_upgrade: called after an upgrade (or fresh install via post_install).
+# It populates the pacman keyring with our trusted keys and prints
+# repository configuration advice based on the user's branch.
+post_upgrade() {
+    if /usr/bin/pacman-key -l >/dev/null 2>&1; then
+        /usr/bin/pacman-key --populate xlibre
+    else
+        echo " >>> Run \`pacman-key --init\` to set up your pacman keyring."
+        echo " >>> Then run \`pacman-key --populate xlibre\` to install the XLibre keyring."
+    fi
+
+    # ------------------------------------------------------------------
+    # After populating, advise the user which repository configuration
+    # to use in /etc/pacman.conf, depending on the detected Manjaro branch.
+    # Stable branch → use https://xlibre-manjaro.github.io/$arch
+    # Other branches or Arch → use https://packages.xlibre.net/arch/stable/$arch
+    # ------------------------------------------------------------------
+    echo ""
+    echo "  XLibre keyring installed successfully."
+    echo "  To enable the XLibre repository, add the following to /etc/pacman.conf:"
+    echo ""
+
+    # Try to detect Manjaro branch via /etc/manjaro-release
+    if [ -f /etc/manjaro-release ]; then
+        branch=$(grep -oP '(?<=branch=)\w+' /etc/manjaro-release 2>/dev/null)
+    else
+        branch=""
+    fi
+
+    if [ "$branch" = "stable" ]; then
+        echo "  [xlibre]"
+        echo "  Server = https://xlibre-manjaro.github.io/\$arch"
+        echo ""
+        echo "  (Manjaro stable branch detected)"
+    else
+        # All other Manjaro branches (testing, unstable) and Arch
+        echo "  [xlibre]"
+        echo "  Server = https://packages.xlibre.net/arch/stable/\$arch"
+        echo ""
+        echo "  (Non‑stable Manjaro branch or Arch Linux detected)"
+    fi
+    echo "  Then run:  sudo pacman -Syu"
+    echo ""
+}
+
+# post_install: called after a fresh installation (not an upgrade).
+# Just delegates to post_upgrade if pacman-key is available.
+post_install() {
+    if [ -x /usr/bin/pacman-key ]; then
+        post_upgrade
+    fi
+}
+=========================================
+FILE: xlibre-revoked
+=========================================
+
+# xlibre-revoked
+# List of revoked key fingerprints, one per line.
+# These keys have been withdrawn and should not be trusted.
+#
+# Current revoked keys:
+73580DE2EDDFA6D6   # Old XLibre signing key (replaced, no longer valid)
+
+# -------------------------------------------------------------------
+# Original Manjaro revoked keys are left commented as reference:
+#
+# 35B4FF23EA9477582C2A0AF12B80869C5C0102A6
+# B4663188A692DB1E45A98EE95BD96CC4247B52CC
+# 1E7908935AAB9A00D6B47503363DFFFD59152F77
+# ... (many more)
+# -------------------------------------------------------------------
+=========================================
+FILE: xlibre-trusted
+=========================================
+
+# xlibre-trusted
+# List of trusted key fingerprints for the XLibre repository, one per line.
+# Format:  fingerprint:trust_level:
+# Trust level "4" means "fully trusted" (as used by pacman-key).
+#
+# Current keys:
+B97F7C613F359424:4:   # Arch XLibre signing key
+D1445F51BC0A8969:4:   # Manjaro XLibre signing key
+
+# -------------------------------------------------------------------
+# The following entries are left commented for demonstration purposes.
+# They are the original Manjaro trusted keys that would be present
+# in a manjaro-keyring package. A maintainer can uncomment and adapt
+# if needed.
+#
+# 0037505D6C3F595C37F5626AFD847358FF20E35C:4:
+# 39F0EC1AE50B37E5F3196F09DAD3B211663CA268:4:
+# 22C903DE964E6FE321656E318DB9F8C18DF53602:4:
+# ... (many more)
+# -------------------------------------------------------------------
