@@ -107,8 +107,3 @@ To create a new release:
 - **Forgetting to update `sha256sums`** – the build will pass (if `SKIP` is used), but the checksums won’t match the actual files.
 - **Using the old `.asc` extension** – `makepkg` treats `.asc` files as detached signatures. Use `.gpg` instead.
 - **Missing `gnupg` as `makedepends`** – the keyring won’t be generated.
-```
-
-```
-Add README.md and MAINTAINER.md with project overview and detailed maintainer documentation
-```
