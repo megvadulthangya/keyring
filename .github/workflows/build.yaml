@@ -27,7 +27,7 @@ jobs:
           pacman -S --noconfirm base-devel gnupg sudo
 
       - name: Build the keyring package
-        run: sudo -u builder makepkg -s --noconfirm
+        run: su builder -c "makepkg -s --noconfirm"
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v7
