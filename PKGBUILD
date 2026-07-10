@@ -7,7 +7,7 @@
 #   gpg --export --armor A9A569C8F797B6878E44C4F8FBF4AB57E9BB9D3C > manjaro-awesome.gpg
 
 pkgname=manjaro-awesome-keyring
-pkgver=20260117
+pkgver=20260710
 pkgrel=1
 pkgdesc="Manjaro Awesome PGP keyring"
 arch=('any')
@@ -18,7 +18,7 @@ install="${pkgname}.install"
 source=('Makefile'
         'manjaro-awesome.gpg'
         'manjaro-awesome-revoked'
-        'manjaro-awsome-trusted')
+        'manjaro-awesome-trusted')
 sha256sums=('SKIP'
             'SKIP'
             'SKIP'
