@@ -2,10 +2,9 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g. 1.0.0)'
-        required: true
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -28,18 +27,21 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm base-devel gnupg sudo
 
-      - name: Set version in PKGBUILD
+      - name: Set version from current date
+        id: version
         run: |
-          sed -i "s/^pkgver=.*/pkgver=${{ inputs.version }}/" PKGBUILD
+          DATE_VERSION=$(date +%Y%m%d)
+          echo "date_version=$DATE_VERSION" >> $GITHUB_OUTPUT
+          sed -i "s/^pkgver=.*/pkgver=$DATE_VERSION/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
       - name: Build the keyring package
         run: su builder -c "makepkg -s --noconfirm"
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ inputs.version }}
+          tag_name: v${{ steps.version.outputs.date_version }}
           files: "*.pkg.tar.*"
           generate_release_notes: true
         env:
