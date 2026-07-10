@@ -60,4 +60,3 @@ Two workflows are provided:
 For detailed instructions on updating keys, modifying the trusted/revoked lists, and performing a new release, please refer to the maintainer guide:
 
 📚 **[MAINTAINER.md](MAINTAINER.md)**
-```
