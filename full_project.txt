@@ -1,0 +1,301 @@
+
+=========================================
+FILE: .gitlab-ci.yml
+=========================================
+
+### Generic CI Template for chrootbuild
+#
+#
+#  Usage: chrootbuild [options]
+#
+#     -b <branch> Branch to use:
+#                 (unstable/testing/stable-staging/stable;
+#                 arm-unstable/arm-testing/arm-stable)
+#                 default: unstable / arm-unstable
+#     -c          Start with clean chroot fs
+#     -h          This help
+#     -i <pkg>    Install package(s) to chroot fs
+#                 (for multiple packages repeat -i flag)
+#     -l <list>   List(s) to build
+#                 (for multiple lists repeat -l flag)
+#     -n          Install built pkg to chroot fs
+#     -p <pkg>    Package(s) to build
+#                 (for multiple packages repeat -p flag)
+#     -r          Remove previously built packages in $PKGDEST
+#     -s          Sign package(s)
+
+package:
+  tags:
+    - aarch64
+  script:
+    # build pkg via chrootbuild
+    - export PKG=${PWD##*/}
+    - cd ..
+    - sudo chrootbuild -cp $PKG
+    - mv -v ./*.pkg.tar.* $PKG
+  artifacts:
+    paths:
+    - ./*.pkg.tar.*
+    expire_in: 1 week
+
+=========================================
+FILE: Makefile
+=========================================
+
+# Makefile for xlibre-keyring
+# Manage the generation of xlibre.gpg from the .gpg key files.
+# Maintainer targets:
+#   make update   - import local .gpg files and export combined keyring
+#   make install  - install keyring to system (called by PKGBUILD)
+#   make uninstall- remove keyring files
+
+V        = 20260709
+PREFIX   = /usr
+KEYDIR   = $(DESTDIR)$(PREFIX)/share/pacman/keyrings/
+
+ARCH_GPG    = xlibre-archlinux.gpg
+MANJARO_GPG = xlibre-manjarolinux.gpg
+
+.PHONY: update install uninstall
+
+update:
+	@TEMPHOME=$$(mktemp -d); \
+	trap 'rm -rf "$$TEMPHOME"' EXIT; \
+	echo "==> Importing Arch XLibre key from $(ARCH_GPG)"; \
+	gpg --homedir "$$TEMPHOME" --batch --import "$(ARCH_GPG)" || exit 1; \
+	echo "==> Importing Manjaro XLibre key from $(MANJARO_GPG)"; \
+	gpg --homedir "$$TEMPHOME" --batch --import "$(MANJARO_GPG)" || exit 1; \
+	echo "==> Exporting combined keyring to xlibre.gpg"; \
+	gpg --homedir "$$TEMPHOME" --batch --export --armor > xlibre.gpg || exit 1; \
+	if [ ! -s xlibre.gpg ]; then \
+		echo "ERROR: Generated keyring is empty" >&2; \
+		exit 1; \
+	fi; \
+	echo "==> Keyring update complete"
+
+install:
+	install -dm755 $(KEYDIR)
+	install -m0644 xlibre{.gpg,-trusted,-revoked} $(KEYDIR)
+
+uninstall:
+	rm -f $(KEYDIR)xlibre{.gpg,-trusted,-revoked}
+	rmdir -p --ignore-fail-on-non-empty $(KEYDIR)
+=========================================
+FILE: PKGBUILD
+=========================================
+
+# Maintainer: XLibre Team <your@email>
+# Contributor: Gyöngyösi Gábor <gabor at gshoots dot hu>
+# Contributor: Philip Müller <philm[at]manjaro[dot]org>
+# Contributor: Bernhard Landauer <bernhard[at]manjaro[dot]org>
+# This PKGBUILD provides the GPG keys for the XLibre xserver repositories.
+#
+# The .gpg key files are stored alongside this PKGBUILD. Their integrity is
+# verified via sha256sums. The Makefile prepares the combined keyring from them.
+# Trusted and revoked key lists are maintained statically.
+
+pkgname=xlibre-keyring
+pkgver=20260709
+pkgrel=1
+pkgdesc="XLibre PGP keyring"
+arch=('any')
+url="https://github.com/xlibre/xlibre-keyring"
+license=('GPL-3.0-or-later')
+depends=('pacman')
+makedepends=('gnupg')
+install="${pkgname}.install"
+
+# SKIP tells makepkg not to try to verify any detached PGP signatures
+validpgpkeys=('SKIP')
+
+source=('Makefile'
+        'xlibre-trusted'
+        'xlibre-revoked'
+        'xlibre-archlinux.gpg'
+        'xlibre-manjarolinux.gpg')
+# IMPORTANT: Replace the SKIP entries with the actual SHA256 hashes of the .gpg files.
+# Run: sha256sum xlibre-archlinux.gpg xlibre-manjarolinux.gpg
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'   # <- replace with real hash
+            'SKIP')  # <- replace with real hash
+
+prepare() {
+  # Generate the xlibre.gpg keyring from the local .gpg key files.
+  cd "$srcdir"
+  make update
+}
+
+package() {
+  # Install the keyring files into /usr/share/pacman/keyrings/
+  make DESTDIR="${pkgdir}" install
+}
+=========================================
+FILE: xlibre-archlinux.gpg
+=========================================
+
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEajX2nRYJKwYBBAHaRw8BAQdAvdW1eBqe/lJdJU6tfD99yIHzmXDDhfa95rDu
+uiNJ1YW0RFhMaWJyZSBmb3IgQXJjaCBMaW51eCBNYWludGFpbmVycyA8YXJjaGxp
+bnV4LW1haW50YWluZXJzQHhsaWJyZS5uZXQ+iLEEExYKAFkWIQQMkjEwAc/KJ2J7
+kJi5f3xhPzWUJAUCajX2nRsUgAAAAAAEAA5tYW51MiwyLjUrMS4xMiwwLDICGwEF
+CQPSwzcFCwkIBwMFFQoJCAsEFgIBAAIeBQIXgAAKCRC5f3xhPzWUJIJMAP4yEzls
+qwjJ49JRfJjTz+CfeYd1g6Tk0LutovVqankTYAD/QDuvYJ+gBZQoGtKNiRzWTm4i
+OD0VzKllATtfyERnZAiIdQQQFgoAHRYhBHwxqbnj1Yg22vNbzL6MyV05q52sBQJq
+Nfa7AAoJEL6MyV05q52sviUA/1fLkeV2LIILUNME3rZ2YayXPOLyE2Ju1qFKMSpC
+4RjQAP9HmX7BAvv2iAv6s8+y7WUciNmZl1oXz7uu7cAtsQrvALgzBGo19yIWCSsG
+AQQB2kcPAQEHQHMBLrAq1JZWD9HMUMwjrj6DBcZgsqRiTYq8udAGSggAiQFyBBgW
+CgBCFiEEDJIxMAHPyidie5CYuX98YT81lCQFAmo19yIbFIAAAAAABAAObWFudTIs
+Mi41KzEuMTIsMCwyAhsCBQkD0sKUAOIJELl/fGE/NZQkwBYgBBkWCgB9FiEEArqX
+AAQA3t15EeEMaofrAs+/208FAmo19yJfFIAAAAAALgAoaXNzdWVyLWZwckBub3Rh
+dGlvbnMub3BlbnBncC5maWZ0aGhvcnNlbWFuLm5ldDAyQkE5NzAwMDQwMERFREQ3
+OTExRTEwQzZBODdFQjAyQ0ZCRkRCNEYACgkQaofrAs+/20/aOAEA37AbSNV2v95D
+lpKNl1EX8dlusMyoPJKG8g/HMw1n9WwBAMdbOyjWInibdwLbEt8GGZz6yroiQmBr
+WxeygYXJfXwJiu0A/jWXyKkHoE4eXGt+zjORbFP4K5uJJATotgvHOyt3ileoAP0c
+LQst+uljoMr3Vduq4eqXrLvb48g8MJxcFDQHu799D7g4BGo19zsSCisGAQQBl1UB
+BQEBB0COHe4XhpDl/MgoQhdLN3J6tqpdia+2BcWezYvtIbaoAgMBCAeImgQYFgoA
+QhYhBAySMTABz8onYnuQmLl/fGE/NZQkBQJqNfc7GxSAAAAAAAQADm1hbnUyLDIu
+NSsxLjEyLDAsMgIbDAUJA9LCfQAKCRC5f3xhPzWUJDWEAPwLeaxmLh2QhzwkVKMc
+QDMdObWdK+pLlrK3mwT236WutQEAkWktLoZuhQ60tKRajnrFf7rFLFiFM5IcKEFz
+uMMj1gI=
+=OFo/
+-----END PGP PUBLIC KEY BLOCK-----
+
+=========================================
+FILE: xlibre-keyring.install
+=========================================
+
+# xlibre-keyring.install
+# This script handles keyring updates, key deletion, and repository advice.
+# It is heavily commented to explain every step for future maintainers.
+
+# Helper function to print bold green messages
+msg() {
+    local ALL_OFF="\e[1;0m"
+    local BOLD="\e[1;1m"
+    local GREEN="${BOLD}\e[1;32m"
+
+    local MESSAGE=$1
+    shift 1
+    printf "${GREEN}==>${ALL_OFF}${BOLD} ${MESSAGE}${ALL_OFF}\n" "$@" >&2
+}
+
+# pre_upgrade: called before upgrading from an older version.
+# Here we clean up old or wrongly disabled keys from previous package versions.
+# The original manjaro-keyring cleanup logic is left commented for reference.
+# For xlibre, we remove the old/replaced signing key (73580DE2EDDFA6D6) if present.
+pre_upgrade() {
+    # ----------------------------------------------------------------------
+    # Example cleanup from Manjaro keyring (commented out):
+    # if [[ "$(vercmp $2 20220509-2)" -lt 0 ]]; then
+    #     msg "Delete wrongly disabled keys"
+    #     pacman-key -d 688E8F82879D0E25CE541426150C200743ED46D8
+    #     ...
+    # fi
+    # ----------------------------------------------------------------------
+
+    # Remove the old/revoked XLibre key if it was manually added before this package
+    if pacman-key -f 73580DE2EDDFA6D6 >/dev/null 2>&1; then
+        msg "Removing old/revoked XLibre key (73580DE2EDDFA6D6)"
+        pacman-key -d 73580DE2EDDFA6D6 2>/dev/null || true
+    fi
+}
+
+# post_upgrade: called after an upgrade (or fresh install via post_install).
+# It populates the pacman keyring with our trusted keys and prints
+# repository configuration advice based on the user's branch.
+post_upgrade() {
+    if /usr/bin/pacman-key -l >/dev/null 2>&1; then
+        /usr/bin/pacman-key --populate xlibre
+    else
+        echo " >>> Run \`pacman-key --init\` to set up your pacman keyring."
+        echo " >>> Then run \`pacman-key --populate xlibre\` to install the XLibre keyring."
+    fi
+
+    # ------------------------------------------------------------------
+    # After populating, advise the user which repository configuration
+    # to use in /etc/pacman.conf, depending on the detected Manjaro branch.
+    # Stable branch → use https://xlibre-manjaro.github.io/$arch
+    # Other branches or Arch → use https://packages.xlibre.net/arch/stable/$arch
+    # ------------------------------------------------------------------
+    echo ""
+    echo "  XLibre keyring installed successfully."
+    echo "  To enable the XLibre repository, add the following to /etc/pacman.conf:"
+    echo ""
+
+    # Try to detect Manjaro branch via /etc/manjaro-release
+    if [ -f /etc/manjaro-release ]; then
+        branch=$(grep -oP '(?<=branch=)\w+' /etc/manjaro-release 2>/dev/null)
+    else
+        branch=""
+    fi
+
+    if [ "$branch" = "stable" ]; then
+        echo "  [xlibre]"
+        echo "  Server = https://xlibre-manjaro.github.io/\$arch"
+        echo ""
+        echo "  (Manjaro stable branch detected)"
+    else
+        # All other Manjaro branches (testing, unstable) and Arch
+        echo "  [xlibre]"
+        echo "  Server = https://packages.xlibre.net/arch/stable/\$arch"
+        echo ""
+        echo "  (Non‑stable Manjaro branch or Arch Linux detected)"
+    fi
+    echo "  Then run:  sudo pacman -Syu"
+    echo ""
+}
+
+# post_install: called after a fresh installation (not an upgrade).
+# Just delegates to post_upgrade if pacman-key is available.
+post_install() {
+    if [ -x /usr/bin/pacman-key ]; then
+        post_upgrade
+    fi
+}
+=========================================
+FILE: xlibre-manjarolinux.gpg
+=========================================
+
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEajb5UBYJKwYBBAHaRw8BAQdA1nTIbjhex+FOlpapDLE+A7BUDIPjPD8qPY6M
+8IH2XFm0SlhMaWJyZSBmb3IgTWFuamFybyBMaW51eCBNYWludGFpbmVycyA8bWFu
+amFyb2xpbnV4LW1haW50YWluZXJzQHhsaWJyZS5uZXQ+iLEEExYKAFkWIQQoy0Oa
+R1gEbqZuN63RRF9RvAqJaQUCajb5UBsUgAAAAAAEAA5tYW51MiwyLjUrMS4xMiww
+LDICGwEFCQPRwI0FCwkIBwMFFQoJCAsEFgIBAAIeBQIXgAAKCRDRRF9RvAqJaY7E
+APsHELkwFN6W5NvRqPw3KDaojH8dcvjzZ0xop7keyg2izQD+JPdqpV44JEVOGqBU
+JWGpMDf0MBVihFSRoT0zfevV6wSIdQQQFgoAHRYhBHwxqbnj1Yg22vNbzL6MyV05
+q52sBQJqNvmBAAoJEL6MyV05q52s+/EBAM6jNcT4C+NlT6gCMK76NbJrfwqkvDmZ
+wuzIDubeN3txAP4rB5Wlaon08rY3CggOvd38TuGGRaIMF0qzcO755QecDLgzBGo2
++ZsWCSsGAQQB2kcPAQEHQACXyg3UGb3hMSw+yw8KCnHozt56yT1chgJoFYSf3Qxu
+iQFyBBgWCgBCFiEEKMtDmkdYBG6mbjet0URfUbwKiWkFAmo2+ZsbFIAAAAAABAAO
+bWFudTIsMi41KzEuMTIsMCwyAhsCBQkD0cAaAOIJENFEX1G8ColpwBYgBBkWCgB9
+FiEEX7Os+bU9gqqgCYXStUvpG7EP/TUFAmo2+ZtfFIAAAAAALgAoaXNzdWVyLWZw
+ckBub3RhdGlvbnMub3BlbnBncC5maWZ0aGhvcnNlbWFuLm5ldDVGQjNBQ0Y5QjUz
+RDgyQUFBMDA5ODVEMkI1NEJFOTFCQjEwRkZEMzUACgkQtUvpG7EP/TUSFwD/WXGk
+q2hZCoDPIV3IswrpKje4NW3V2x7l9w8bgT8SLywBAP40A9hJiPVlBC0BtOE/phXB
+e5Sy0pXrENLCqYhAUH4DP+kA/RUscdRZW85xd7B2mqIw815iS1hWdgtYyda44lv9
+nB0kAP9pzRpGVtWNyaEdXV8UuQ6ZRnMB6fjOOtR8TVMiSe1wD7g4BGo2+bESCisG
+AQQBl1UBBQEBB0Cfttx8l8MaMshMKb2qkTif6aSPkTRRm61NjHx8ZfQjJQMBCAeI
+mgQYFgoAQhYhBCjLQ5pHWARupm43rdFEX1G8ColpBQJqNvmxGxSAAAAAAAQADm1h
+bnUyLDIuNSsxLjEyLDAsMgIbDAUJA9HACAAKCRDRRF9RvAqJabGWAP0eLMlE2UGe
+zND8AafJa5Y3Vi3xWGGOnRLvj68KYcpxlgD8Dhdc+ciRs8IJKSVxBiGWIjV5CTrC
+GEMWKkY7tZLxYAA=
+=5Axu
+-----END PGP PUBLIC KEY BLOCK-----
+
+=========================================
+FILE: xlibre-revoked
+=========================================
+
+73580DE2EDDFA6D6
+
+=========================================
+FILE: xlibre-trusted
+=========================================
+
+B97F7C613F359424:4:
+D1445F51BC0A8969:4:
