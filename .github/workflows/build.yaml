@@ -24,7 +24,7 @@ jobs:
       - name: Install build tools
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel gnupg
+          pacman -S --noconfirm base-devel gnupg sudo
 
       - name: Build the keyring package
         run: sudo -u builder makepkg -s --noconfirm
