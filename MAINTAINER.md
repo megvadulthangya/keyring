@@ -116,7 +116,7 @@ Place the following files in the respective directories of your ISO profile (e.g
    # trust the XLibre repository signing keys.
 
    pacman-key --init
-   pacman-key --populate manjaro-awesome xlibre
+   pacman-key --populate xlibre
 
    # Disable this service, so it only gets run on first boot
    systemctl disable manjaro-post-install.service
@@ -149,7 +149,7 @@ Build your ISO using the standard Manjaro ISO tools. After booting the resulting
 
 - The service runs once.
 - `pacman-key --init` creates the keyring database.
-- `pacman-key --populate manjaro-awesome xlibre` trusts both the official Manjaro keyring and the XLibre keyring.
+- `pacman-key --populate xlibre` trusts both the XLibre keyring.
 - The service disables itself, so it won't run again on subsequent boots.
 
 This ensures that packages from the XLibre repository are immediately trusted after installation.
