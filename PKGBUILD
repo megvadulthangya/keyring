@@ -1,47 +1,33 @@
-# Maintainer: XLibre Team <your@email>
-# Contributor: Gyöngyösi Gábor <gabor at gshoots dot hu>
+# Maintainer: Gyöngyösi Gábor <gabor at gshoots dot hu>
 # Contributor: Philip Müller <philm[at]manjaro[dot]org>
 # Contributor: Bernhard Landauer <bernhard[at]manjaro[dot]org>
-# This PKGBUILD provides the GPG keys for the XLibre xserver repositories.
-#
-# The .gpg key files are stored alongside this PKGBUILD. Their integrity is
-# verified via sha256sums. The Makefile prepares the combined keyring from them.
-# Trusted and revoked key lists are maintained statically.
+# Contributor: Pierre Schmitz <pierre@archlinux.de>
 
-pkgname=xlibre-keyring
-pkgver=20260709
+# Before building, generate manjaro-awesome.gpg with:
+#   gpg --export --armor A9A569C8F797B6878E44C4F8FBF4AB57E9BB9D3C > manjaro-awesome.gpg
+
+pkgname=manjaro-awesome-keyring
+pkgver=20260117
 pkgrel=1
-pkgdesc="XLibre PGP keyring"
+pkgdesc="Manjaro Awesome PGP keyring"
 arch=('any')
-url="https://github.com/xlibre/xlibre-keyring"
+url="https://gitlab.manjaro.org/packages/core/manjaro-awesome-keyring"
 license=('GPL-3.0-or-later')
 depends=('pacman')
-makedepends=('gnupg')
 install="${pkgname}.install"
-
-# SKIP tells makepkg not to try to verify any detached PGP signatures
-validpgpkeys=('SKIP')
-
 source=('Makefile'
-        'xlibre-trusted'
-        'xlibre-revoked'
-        'xlibre-archlinux.gpg'
-        'xlibre-manjarolinux.gpg')
-# IMPORTANT: Replace the SKIP entries with the actual SHA256 hashes of the .gpg files.
-# Run: sha256sum xlibre-archlinux.gpg xlibre-manjarolinux.gpg
+        'manjaro-awesome.gpg'
+        'manjaro-awesome-revoked'
+        'manjaro-awsome-trusted')
 sha256sums=('SKIP'
             'SKIP'
             'SKIP'
-            'SKIP'   # <- replace with real hash
-            'SKIP')  # <- replace with real hash
+            'SKIP')
 
-prepare() {
-  # Generate the xlibre.gpg keyring from the local .gpg key files.
-  cd "$srcdir"
-  make update
+pkgver() {
+  date +%Y%m%d
 }
 
 package() {
-  # Install the keyring files into /usr/share/pacman/keyrings/
   make DESTDIR="${pkgdir}" install
 }
