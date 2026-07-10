@@ -1,6 +1,6 @@
 # Maintainer Guide – xlibre-keyring
 
-This document explains how to manage the keyring package, update keys, and release new versions.
+This document explains how to manage the keyring package, update keys, release new versions, and integrate the keyring into a Manjaro ISO.
 
 ## Package overview
 
@@ -100,10 +100,56 @@ To create a new release:
 - Go to the **Actions** tab → **Release** workflow → **Run workflow**.
 - Wait for the workflow to finish – the release will appear under the repository’s Releases page.
 
-## Common pitfalls
+## Integrating into a Manjaro ISO
 
-- **Missing trailing newline in `xlibre-trusted`** → `pacman-key` will ignore the last key.
-- **Incorrect trust level** – must be `:4:`.
-- **Forgetting to update `sha256sums`** – the build will pass (if `SKIP` is used), but the checksums won’t match the actual files.
-- **Using the old `.asc` extension** – `makepkg` treats `.asc` files as detached signatures. Use `.gpg` instead.
-- **Missing `gnupg` as `makedepends`** – the keyring won’t be generated.
+To include the XLibre keyring in a custom Manjaro ISO (e.g., a respin), the keyring must be installed and populated on first boot. A systemd service automates this.
+
+### Required files
+
+Place the following files in the respective directories of your ISO profile (e.g., `iso-profiles/manjaro/xfce/desktop-overlay/`):
+
+1. **`usr/local/bin/manjaro-post-install`** (executable script)
+   ```bash
+   #!/bin/sh
+   # Pacman Init and XLibre keyring population for first boot.
+   # This service runs once to initialize the pacman keyring and
+   # trust the XLibre repository signing keys.
+
+   pacman-key --init
+   pacman-key --populate manjaro-awesome xlibre
+
+   # Disable this service, so it only gets run on first boot
+   systemctl disable manjaro-post-install.service
+   ```
+
+2. **`etc/systemd/system/manjaro-post-install.service`**
+   ```ini
+   [Unit]
+   Description=Manjaro Post Install.
+
+   [Service]
+   Type=simple
+   ExecStart=/usr/local/bin/manjaro-post-install
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+### Enable the service in `profile.conf`
+
+Edit the ISO profile’s `profile.conf` (e.g., `iso-profiles/manjaro/xfce/profile.conf`) and add `'manjaro-post-install'` to the `enable_systemd` array:
+
+```bash
+enable_systemd=('avahi-daemon' 'bluetooth' 'cronie' 'ModemManager' 'NetworkManager' 'cups' 'ufw' 'apparmor' 'snapd.apparmor' 'snapd' 'systemd-timesyncd' 'manjaro-post-install')
+```
+
+### Build the ISO
+
+Build your ISO using the standard Manjaro ISO tools. After booting the resulting ISO:
+
+- The service runs once.
+- `pacman-key --init` creates the keyring database.
+- `pacman-key --populate manjaro-awesome xlibre` trusts both the official Manjaro keyring and the XLibre keyring.
+- The service disables itself, so it won't run again on subsequent boots.
+
+This ensures that packages from the XLibre repository are immediately trusted after installation.
