@@ -219,4 +219,3 @@ Build your ISO using the standard Manjaro ISO tools. After booting the resulting
 - The service disables itself only if the keyring was successfully populated, otherwise it remains active and will retry on the next boot.
 
 This ensures that packages from the XLibre repository are immediately trusted after installation.
-```
