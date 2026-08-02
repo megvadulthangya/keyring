@@ -111,15 +111,81 @@ Place the following files in the respective directories of your ISO profile (e.g
 1. **`usr/local/bin/manjaro-post-install`** (executable script)
    ```bash
    #!/bin/sh
-   # Pacman Init and XLibre keyring population for first boot.
-   # This service runs once to initialize the pacman keyring and
-   # trust the XLibre repository signing keys.
+# Pacman Init and XLibre keyring population for first boot.
+# This service runs once to initialize the pacman keyring and
+# trust the XLibre repository signing keys.
 
-   pacman-key --init
-   pacman-key --populate xlibre
+# Helper function for logging
+log_msg() {
+    echo "manjaro-post-install: $*"
+}
 
-   # Disable this service, so it only gets run on first boot
-   systemctl disable manjaro-post-install.service
+# 1. Initialize pacman keyring if not already done
+if ! pacman-key -l >/dev/null 2>&1; then
+    log_msg "Initializing pacman keyring..."
+    if ! pacman-key --init; then
+        log_msg "ERROR: pacman-key --init failed."
+        exit 1
+    fi
+else
+    log_msg "Pacman keyring already initialized."
+fi
+
+# 2. Check for missing keyring files and try to reinstall from cache if needed
+populate_keyring() {
+    local kr="$1"
+    local pkg="${kr}-keyring"
+
+    if [ ! -f "/usr/share/pacman/keyrings/${kr}.gpg" ] || \
+       [ ! -f "/usr/share/pacman/keyrings/${kr}-trusted" ]; then
+        log_msg "WARNING: ${kr} keyring files missing. Trying to reinstall ${pkg} from cache..."
+        if command -v pacman >/dev/null && ls /var/cache/pacman/pkg/${pkg}-*.pkg.tar* &>/dev/null; then
+            pacman -U --noconfirm /var/cache/pacman/pkg/${pkg}-*.pkg.tar*
+            if [ $? -ne 0 ]; then
+                log_msg "ERROR: Failed to reinstall ${pkg} from cache."
+                return 1
+            fi
+        else
+            log_msg "ERROR: Cannot find ${pkg} in cache. Keyring may be broken."
+            return 1
+        fi
+    fi
+
+    # Populate the keyring and sign locally
+    log_msg "Populating ${kr} keyring..."
+    pacman-key --populate "$kr"
+    local ret=$?
+    if [ $ret -ne 0 ]; then
+        log_msg "WARNING: pacman-key --populate ${kr} failed (exit code $ret). Retrying once..."
+        pacman-key --populate "$kr"
+        ret=$?
+        if [ $ret -ne 0 ]; then
+            log_msg "ERROR: pacman-key --populate ${kr} failed after retry."
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# 3. Process only the xlibre keyring
+FAILED=0
+populate_keyring "xlibre" || FAILED=1
+
+# 4. Disable this service only if all keyrings were successfully populated
+if [ $FAILED -eq 0 ]; then
+    log_msg "XLibre keyring populated successfully. Disabling manjaro-post-install.service."
+    systemctl disable manjaro-post-install.service
+else
+    log_msg "WARNING: XLibre keyring could not be populated. Service will remain enabled for next boot."
+    exit 1
+fi
+
+# Original (now unused) lines kept for reference:
+#pacman-key --init
+#pacman-key --populate manjaro-awesome xlibre
+#pacman-key --populate xlibre
+# Disable this service, so it only gets run on first boot
+#systemctl disable manjaro-post-install.service
    ```
 
 2. **`etc/systemd/system/manjaro-post-install.service`**
