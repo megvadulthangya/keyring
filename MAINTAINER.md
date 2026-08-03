@@ -111,27 +111,29 @@ Place the following files in the respective directories of your ISO profile (e.g
 1. **`usr/local/bin/manjaro-post-install`** (executable script)
    ```bash
    #!/bin/sh
-   # Pacman Init and XLibre keyring population for first boot.
-   # This service runs once to initialize the pacman keyring and
-   # trust the XLibre repository signing keys.
+   # First-boot script to initialize the pacman keyring and populate
+   # the XLibre repository signing keys.
+   # This service runs once and disables itself upon success.
 
-   # Helper function for logging
    log_msg() {
        echo "manjaro-post-install: $*"
    }
 
-   # 1. Initialize pacman keyring if not already done
-   if ! pacman-key -l >/dev/null 2>&1; then
-       log_msg "Initializing pacman keyring..."
-       if ! pacman-key --init; then
-           log_msg "ERROR: pacman-key --init failed."
+   # Ensure the pacman master key exists; if not, generate it.
+   init_output=$(pacman-key --init 2>&1)
+   init_ret=$?
+   if [ $init_ret -ne 0 ]; then
+       if echo "$init_output" | grep -q "A master key already exists"; then
+           log_msg "Pacman master key already present."
+       else
+           log_msg "ERROR: pacman-key --init failed: $init_output"
            exit 1
        fi
    else
-       log_msg "Pacman keyring already initialized."
+       log_msg "Pacman keyring initialized successfully."
    fi
 
-   # 2. Check for missing keyring files and try to reinstall from cache if needed
+   # Function to populate a given keyring, with fallback to reinstall from cache if keyring files are missing.
    populate_keyring() {
        local kr="$1"
        local pkg="${kr}-keyring"
@@ -151,7 +153,6 @@ Place the following files in the respective directories of your ISO profile (e.g
            fi
        fi
 
-       # Populate the keyring and sign locally
        log_msg "Populating ${kr} keyring..."
        pacman-key --populate "$kr"
        local ret=$?
@@ -167,11 +168,11 @@ Place the following files in the respective directories of your ISO profile (e.g
        return 0
    }
 
-   # 3. Process only the xlibre keyring
+   # Process only the xlibre keyring
    FAILED=0
    populate_keyring "xlibre" || FAILED=1
 
-   # 4. Disable this service only if all keyrings were successfully populated
+   # Disable service only if the keyring was populated successfully
    if [ $FAILED -eq 0 ]; then
        log_msg "XLibre keyring populated successfully. Disabling manjaro-post-install.service."
        systemctl disable manjaro-post-install.service
@@ -179,13 +180,6 @@ Place the following files in the respective directories of your ISO profile (e.g
        log_msg "WARNING: XLibre keyring could not be populated. Service will remain enabled for next boot."
        exit 1
    fi
-
-   # Original (now unused) lines kept for reference:
-   #pacman-key --init
-   #pacman-key --populate manjaro-awesome xlibre
-   #pacman-key --populate xlibre
-   # Disable this service, so it only gets run on first boot
-   #systemctl disable manjaro-post-install.service
    ```
 
 2. **`etc/systemd/system/manjaro-post-install.service`**
@@ -214,8 +208,8 @@ enable_systemd=('avahi-daemon' 'bluetooth' 'cronie' 'ModemManager' 'NetworkManag
 Build your ISO using the standard Manjaro ISO tools. After booting the resulting ISO:
 
 - The service runs once.
-- `pacman-key --init` creates the keyring database (if needed).
-- `pacman-key --populate xlibre` trusts the XLibre keyring.
-- The service disables itself only if the keyring was successfully populated, otherwise it remains active and will retry on the next boot.
+- The pacman master key is generated if missing (handled idempotently).
+- `pacman-key --populate xlibre` trusts the XLibre repository signing key.
+- The service disables itself only if the keyring was populated successfully; otherwise it remains enabled and retries on the next boot.
 
 This ensures that packages from the XLibre repository are immediately trusted after installation.
